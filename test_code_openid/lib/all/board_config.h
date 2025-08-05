@@ -163,14 +163,6 @@
 #define PIN_CAN_TERM GPIO_NUM_37
 #define CAN_TERM_EN  LOW
 #define CAN_APP_NODE_NAME "net.cuav.c-rid"
-
-
-
-
-
-
-
-
 #elif defined(BOARD_ESP32S3_DEVKITM_1)
 #define BOARD_ID 13
 #define PIN_CAN_TX GPIO_NUM_47
@@ -181,8 +173,7 @@
 
 #define WS2812_LED_PIN GPIO_NUM_48
 
-#define CAN_APP_NODE_NAME "ESP32S3 DevKitM-1"
-
+#define CAN_APP_NODE_NAME "ESP32S3 DEVKITM-1"
 
 #else
 #error "unsupported board"

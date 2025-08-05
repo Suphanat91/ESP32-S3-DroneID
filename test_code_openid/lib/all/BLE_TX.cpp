@@ -14,7 +14,7 @@
 #include <BLEDevice.h>
 #include <BLEAdvertising.h>
 #include "parameters.h"
-// #include "opendroneid.h"
+
 
 
 //interval min/max are configured for 1 Hz update rate. Somehow dynamic setting of these fields fails
@@ -111,13 +111,19 @@ bool BLE_TX::init(void)
     // set as a bluetooth random static address
     mac_addr[0] |= 0xc0;
 
+    // ----- Instance 0: Legacy Advertising -----
     advert.setAdvertisingParams(0, &legacy_adv_params);
     advert.setInstanceAddress(0, mac_addr);
     advert.setDuration(0);
 
+    // ----- Instance 1: Extended Advertising (Long-Range) -----
     advert.setAdvertisingParams(1, &ext_adv_params_coded);
-    advert.setDuration(1);
     advert.setInstanceAddress(1, mac_addr);
+    advert.setDuration(1);
+
+    // ใส่ dummy data เพื่อ config ให้เสร็จก่อน loop
+    uint8_t dummyData[6] = { 0x05, 0x16, 0xFA, 0xFF, 0x0D, 0x00 }; 
+    advert.setAdvertisingData(1, sizeof(dummyData), dummyData);
 
     // prefer S8 coding
     if (esp_ble_gap_set_prefered_default_phy(ESP_BLE_GAP_PHY_OPTIONS_PREF_S8_CODING, ESP_BLE_GAP_PHY_OPTIONS_PREF_S8_CODING) != ESP_OK) {
@@ -125,8 +131,10 @@ bool BLE_TX::init(void)
     }
 
     memset(&msg_counters,0, sizeof(msg_counters));
+    started = false; // ให้ start โฆษณาเมื่อส่งจริงครั้งแรก
     return true;
 }
+
 
 #define IMIN(a,b) ((a)<(b)?(a):(b))
 
@@ -311,8 +319,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
 
     if (!started) {
         advert.start();
-        
-
     }
     started = true;
 

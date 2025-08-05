@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>ArduRemoteID</title>
+    <meta name="description" content="ArduPilot RemoteID Module.">
+    <link rel="stylesheet" type="text/css" href="styles/main.css">
+    <script src='js/jquery.min.js'></script>
+    <script src='js/tools.js'></script>
+</head>
+
+<body>
+  <a href="/index.html"><img id="logo" src="" alt="logo"></a></p>
+  <h1>ArduRemoteID</h1>
+
+  <h2>Status</h2>
+
+  <fieldset>
+    <legend>System</legend>
+    <table class="values">
+      <tr><td>Version</td><td><div id="STATUS:VERSION"></div></td></tr>
+      <tr><td>Board</td><td><div id="STATUS:BOARD"></div></td></tr>
+      <tr><td>Up Time</td><td><div id="STATUS:UPTIME"></div></td></tr>
+      <tr><td>Free Memory</td><td><div id="STATUS:FREEMEM"></div></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>BasicID 1</legend>
+    <table class="values">
+      <tr><td>UAType</td><td><div id="BASICID:UAType"></div></td></tr>
+      <tr><td>IDType</td><td><div id="BASICID:IDType"></div></td></tr>
+      <tr><td>UASID</td><td><div id="BASICID:UASID"></div></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>BasicID 2</legend>
+    <table class="values">
+      <tr><td>UAType</td><td><div id="BASICID:UAType2"></div></td></tr>
+      <tr><td>IDType</td><td><div id="BASICID:IDType2"></div></td></tr>
+      <tr><td>UASID</td><td><div id="BASICID:UASID2"></div></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>OperatorID</legend>
+    <table class="values">
+      <tr><td>IDType</td><td><div id="OPERATORID:IDType"></div></td></tr>
+      <tr><td>ID</td><td><div id="OPERATORID:ID"></div></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>SelfID</legend>
+    <table class="values">
+      <tr><td>DescriptionType</td><td><div id="SELFID:DescType"></div></td></tr>
+      <tr><td>Description</td><td><div id="SELFID:Desc"></div></td></tr>
+    </table>
+  </fieldset>
+  <fieldset>
+    <legend>System</legend>
+    <table class="values">
+      <tr><td>OperatorLocationType</td><td><div id="SYSTEM:OperatorLocationType"></div></td></tr>
+      <tr><td>ClassificationType</td><td><div id="SYSTEM:ClassificationType"></div></td></tr>
+      <tr><td>OperatorLatitude</td><td><div id="SYSTEM:OperatorLatitude"></div></td></tr>
+      <tr><td>OperatorLongitude</td><td><div id="SYSTEM:OperatorLongitude"></div></td></tr>
+      <tr><td>AreaCount</td><td><div id="SYSTEM:AreaCount"></div></td></tr>
+      <tr><td>AreaRadius</td><td><div id="SYSTEM:AreaRadius"></div></td></tr>
+      <tr><td>AreaCeiling</td><td><div id="SYSTEM:AreaCeiling"></div></td></tr>
+      <tr><td>AreaFloor</td><td><div id="SYSTEM:AreaFloor"></div></td></tr>
+      <tr><td>CategoryEU</td><td><div id="SYSTEM:CategoryEU"></div></td></tr>
+      <tr><td>ClassEU</td><td><div id="SYSTEM:ClassEU"></div></td></tr>
+      <tr><td>OperatorAltitudeGeo</td><td><div id="SYSTEM:OperatorAltitudeGeo"></div></td></tr>
+      <tr><td>Timestamp</td><td><div id="SYSTEM:Timestamp"></div></td></tr>
+    </table>
+  </fieldset>
+
+  <fieldset>
+    <legend>Location</legend>
+    <table class="values">
+      <tr><td>Status</td><td><div id="LOCATION:Status"></div><div id="LOCATION:StatusReason"></div><td></tr>
+      <tr><td>Direction</td><td><div id="LOCATION:Direction"></div><td></tr>
+      <tr><td>SpeedHorizontal</td><td><div id="LOCATION:SpeedHorizontal"></div><td></tr>
+      <tr><td>SpeedVertical</td><td><div id="LOCATION:SpeedVertical"></div><td></tr>
+      <tr><td>Latitude</td><td><div id="LOCATION:Latitude"></div><td></tr>
+      <tr><td>Longitude</td><td><div id="LOCATION:Longitude"></div><td></tr>
+      <tr><td>AltitudeBaro</td><td><div id="LOCATION:AltitudeBaro"></div><td></tr>
+      <tr><td>AltitudeGeo</td><td><div id="LOCATION:AltitudeGeo"></div><td></tr>
+      <tr><td>HeightType</td><td><div id="LOCATION:HeightType"></div><td></tr>
+      <tr><td>Height</td><td><div id="LOCATION:Height"></div><td></tr>
+      <tr><td>HorizAccuracy</td><td><div id="LOCATION:HorizAccuracy"></div><td></tr>
+      <tr><td>VertAccuracy</td><td><div id="LOCATION:VertAccuracy"></div><td></tr>
+      <tr><td>BaroAccuracy</td><td><div id="LOCATION:BaroAccuracy"></div><td></tr>
+      <tr><td>SpeedAccuracy</td><td><div id="LOCATION:SpeedAccuracy"></div><td></tr>
+      <tr><td>TSAccuracy</td><td><div id="LOCATION:TSAccuracy"></div><td></tr>
+      <tr><td>TimeStamp</td><td><div id="LOCATION:TimeStamp"></div><td></tr>
+    </table>
+  </fieldset>
+
+  <h2>Documentation</h2>
+  <div id="documentation">
+  </div>
+  <h2>Firmware Update</h2>
+
+  <div id='progress'>upload progress: 0%</div>
+  <form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>
+    <input type='file' name='update'>
+    <input type='submit' value='Update'>
+  </form>
+  <p>
+
+  <script>
+    $('form').submit(function(e) {
+        e.preventDefault();
+        var form = $('#upload_form')[0];
+        var data = new FormData(form);
+        $.ajax({
+            url: '/update',
+            type: 'POST',
+            data: data,
+            contentType: false,
+            processData:false,
+            xhr: function() {
+                var xhr = new window.XMLHttpRequest();
+                xhr.upload.addEventListener('progress', function(evt) {
+                    if (evt.lengthComputable) {
+                       var per = evt.loaded / evt.total;
+                       $('#progress').html('progress: ' + Math.round(per*100) + '%');
+                       if (evt.loaded == evt.total) {
+                           setTimeout(function(){ //popup after 2 second
+							   if (xhr.status === 200) {
+                                   $('#progress').html('progress: done');
+                                   alert("Firmware upgrade completed!\n\nPress OK to reboot the RemoteID device.");
+                                   window.location.reload(true);
+							   }
+                           }, 2000);
+                       }
+                   }
+                }, false);
+                return xhr;
+            },
+            success:function(d, s) {
+                console.log('success!');
+            },
+            error: function (a, b, c) {
+				 setTimeout(function(){ //popup after 1 second
+                     $('#progress').html('progress: error');
+                     alert("Firmware upgrade FAILED!\n\nPlease check that:\na) you downloaded the OTA firmware (ending on _OTA.bin)\nb) you downloaded the correct file for your board\nc) if the LOCK_LEVEL has been set to 2 in your board, make sure you uploaded firmware that is signed with the correct key.");
+                     window.location.reload(true);
+                 }, 100);
+            }
+        });
+    });
+
+    // poll status information at 1Hz (900ms to cope with some lag)
+    ajax_json_poll_fill("/ajax/status.json", 900);
+
+    $(document).ready(function() {
+        $('#progress').html(''); //disable progress text after loading the page
+    });
+    </script>
+</body>
+</html>

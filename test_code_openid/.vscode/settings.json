@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "stdio.h": "c",
-        "opendroneid.h": "c"
+        "opendroneid.h": "c",
+        "string.h": "c",
+        "mavlink2.h": "c"
     }
 }
