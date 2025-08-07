@@ -1,9 +1,37 @@
 #include <Arduino.h>
 #include "BLE_TX.h"
 #include <opendroneid.h>
+#include "odid_wifi.h"
+#include "WiFi_TX.h"
+#include "mbedtls/aes.h"
+#include <string.h>
 
+#if AP_DRONECAN_ENABLED
+static DroneCAN dronecan;
+#endif
+
+#if AP_MAVLINK_ENABLED
+static MAVLinkSerial mavlink1{Serial1, MAVLINK_COMM_0};
+static MAVLinkSerial mavlink2{Serial,  MAVLINK_COMM_1};
+#endif
+
+static WiFi_TX wifi;
+// static BLE_TX ble;
 ODID_UAS_Data UAS_data;
 BLE_TX ble;
+#define DEBUG_BAUDRATE 57600
+
+// OpenDroneID output data structure
+// ODID_UAS_Data UAS_data;
+String status_reason;
+static uint32_t last_location_ms;
+
+
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
+static bool arm_check_ok = false; // goes true for LED arm check status
+static bool pfst_check_ok = false;
 
 void setup() {
     Serial.begin(115200);
@@ -25,8 +53,8 @@ void setup() {
   UAS_data.Location.Direction = 90.0f;
   UAS_data.Location.SpeedHorizontal = 5.5f;
   UAS_data.Location.SpeedVertical = 0.0f;
-  UAS_data.Location.Latitude = 13.7563;   // Bangkok
-  UAS_data.Location.Longitude = 100.5018;
+  UAS_data.Location.Latitude = 13.0890;   // Bangkok
+  UAS_data.Location.Longitude = 100.9531;
   UAS_data.Location.AltitudeBaro = 50.0f;
   UAS_data.Location.AltitudeGeo = 48.0f;
   UAS_data.Location.HeightType = ODID_HEIGHT_REF_OVER_GROUND;
@@ -48,8 +76,8 @@ void setup() {
   UAS_data.SystemValid = 1;
   UAS_data.System.OperatorLocationType = ODID_OPERATOR_LOCATION_TYPE_TAKEOFF;
   UAS_data.System.ClassificationType = ODID_CLASSIFICATION_TYPE_EU;
-  UAS_data.System.OperatorLatitude = 13.7563;
-  UAS_data.System.OperatorLongitude = 100.5018;
+  UAS_data.System.OperatorLatitude = 13.0890;
+  UAS_data.System.OperatorLongitude = 100.9531;  // 13.089051466442617, 100.95314807868982
   UAS_data.System.AreaCount = 1;
   UAS_data.System.AreaRadius = 100;
   UAS_data.System.AreaCeiling = 120.0f;
@@ -81,3 +109,71 @@ void loop() {
 
     delay(1000);
 }
+
+// #include <Arduino.h>
+// #include "opendroneid.h"
+// #include "BLE_TX.h"
+
+// // BLE transmitter
+// static BLE_TX ble;
+
+// // OpenDroneID data
+// ODID_UAS_Data UAS_data;
+
+// // Helper macro for safe string copy
+// #define IMIN(x,y) ((x)<(y)?(x):(y))
+// #define ODID_COPY_STR(to, from) strncpy(to, (const char*)from, IMIN(sizeof(to), sizeof(from)))
+
+// // Setup function
+// void setup() {
+//     Serial.begin(57600);
+//     Serial.println("Starting BLE Legacy OpenDroneID Sender...");
+
+//     // Initialize BLE transmitter
+//     ble.init();
+
+//     // Reset UAS_data to defaults
+//     odid_initUasData(&UAS_data);
+
+//     // --------------------------
+//     // Fill BasicID[0]
+//     // --------------------------
+//     UAS_data.BasicID[0].UAType = ODID_UATYPE_HELICOPTER_OR_MULTIROTOR;
+//     UAS_data.BasicID[0].IDType = ODID_IDTYPE_SERIAL_NUMBER;
+//     ODID_COPY_STR(UAS_data.BasicID[0].UASID, "MY-DRONE-12345");
+//     UAS_data.BasicIDValid[0] = 1;
+
+//     // --------------------------
+//     // Fill OperatorID
+//     // --------------------------
+//     UAS_data.OperatorID.OperatorIdType = ODID_OPERATOR_ID;
+//     ODID_COPY_STR(UAS_data.OperatorID.OperatorId, "OP-987654321");
+//     UAS_data.OperatorIDValid = 1;
+
+//     // --------------------------
+//     // Fill Location
+//     // --------------------------
+//     UAS_data.Location.Status = ODID_STATUS_AIRBORNE;
+//     UAS_data.Location.Latitude = 13.1010;     // Example: Bangkok
+//     UAS_data.Location.Longitude = 100.9701;
+//     UAS_data.Location.AltitudeBaro = 50.0;    // meters
+//     UAS_data.Location.AltitudeGeo = 48.0;     // meters
+//     UAS_data.Location.HeightType = ODID_HEIGHT_REF_OVER_GROUND;
+//     UAS_data.Location.Height = 50.0;          // meters
+//     UAS_data.Location.HorizAccuracy = ODID_HOR_ACC_3_METER;
+//     UAS_data.Location.VertAccuracy = ODID_VER_ACC_1_METER;
+//     UAS_data.Location.SpeedHorizontal = 5.0;  // m/s
+//     UAS_data.Location.SpeedVertical = 0.0;    // m/s
+//     UAS_data.Location.Direction = 90.0;       // degrees
+//     UAS_data.LocationValid = 1;
+// }
+// // 13.101006082487949, 100.9701425541609
+// // Loop function
+// void loop() {
+//     // Send legacy BLE OpenDroneID packet
+//     ble.transmit_legacy(UAS_data);
+
+//     Serial.println("BLE Legacy packet sent.");
+//     delay(1000); // Send every 1 second
+// }
+

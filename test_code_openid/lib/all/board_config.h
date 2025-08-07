@@ -175,6 +175,7 @@
 
 #define CAN_APP_NODE_NAME "ESP32S3 DEVKITM-1"
 
+
 #else
 #error "unsupported board"
 #endif
