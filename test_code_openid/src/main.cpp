@@ -104,7 +104,7 @@ void setup() {
 }
 
 void loop() {
-    ble.transmit_legacy(UAS_data);
+    // ble.transmit_legacy(UAS_data);
     ble.transmit_longrange(UAS_data);
 
     delay(1000);

@@ -11,10 +11,57 @@
 #include "options.h"
 #include <esp_system.h>
 
-#include "BLEDevice.h"
-#include "BLEAdvertising.h"
+#include <BLEDevice.h>
+#include <BLEAdvertising.h>
 #include "parameters.h"
-// #include "opendroneid.h"
+#include <Arduino.h>
+#include <string.h>
+#include "mbedtls/sha256.h"
+#include "mbedtls/base64.h"
+#include "mbedtls/aes.h"
+// ===== AES-256 CTR helpers/config =====
+
+// Example AES-256 key (32 bytes). In real usage, replace with your own secret key.
+static const uint8_t AES256_KEY[32] = {
+  0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
+  0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
+};
+
+// Example IV / nonce (16 bytes). In real usage, generate a fresh one per message.
+static const uint8_t AES256_IV[16] = {
+  0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f
+};
+
+// Function to encrypt/decrypt a buffer in-place with AES-256 CTR
+static void aes256_ctr_crypt(uint8_t* buf, size_t len,
+                             const uint8_t key[32], const uint8_t iv[16]) {
+  mbedtls_aes_context ctx;
+  mbedtls_aes_init(&ctx);
+  mbedtls_aes_setkey_enc(&ctx, key, 256); // set AES-256 key for encryption
+  size_t nc_off = 0;
+  unsigned char stream_block[16] = {0};
+  unsigned char nonce_counter[16];
+  memcpy(nonce_counter, iv, 16); // copy IV so we don't modify the original
+
+  // Encrypt/decrypt (same function in CTR mode)
+  mbedtls_aes_crypt_ctr(&ctx, len, &nc_off, nonce_counter, stream_block, buf, buf);
+
+  mbedtls_aes_free(&ctx);
+}
+
+// Helper to print a buffer as hex
+static void print_hex(const char* label, const uint8_t* data, size_t len) {
+  Serial.print(label);
+  Serial.print(" (");
+  Serial.print((unsigned)len);
+  Serial.println(" bytes):");
+  for (size_t i = 0; i < len; i++) {
+    if (data[i] < 0x10) Serial.print('0'); // pad single-digit hex
+    Serial.print(data[i], HEX);
+    Serial.print(' ');
+  }
+  Serial.println();
+}
 
 // interval min/max are configured for 1 Hz update rate. Somehow dynamic setting of these fields fails
 // shorter intervals lead to more BLE transmissions. This would result in increased power consumption and can lead to more interference to other radio systems.
@@ -58,7 +105,7 @@ uint8_t BLE_TX::dBm_to_tx_power(float dBm) const
         uint8_t level;
         float dBm;
     } dBm_table[] = {
-        // { ESP_PWR_LVL_N27,-27 },
+        {ESP_PWR_LVL_N27, -27},
         {ESP_PWR_LVL_N24, -24},
         {ESP_PWR_LVL_N21, -21},
         {ESP_PWR_LVL_N18, -18},
@@ -106,15 +153,9 @@ bool BLE_TX::init(void)
     ext_adv_params_coded.interval_max = (1000 / (g.bt5_rate)) / 0.625;
     ext_adv_params_coded.interval_min = 0.75 * ext_adv_params_coded.interval_max;
 
-    // // Set proper extended advertising event properties (non-connectable, non-scannable)
-    // ext_adv_params_coded.event_properties = ESP_BLE_GAP_SET_EXT_ADV_PROP_NONCONN_NONSCAN;
-    // ext_adv_params_coded.primary_phy = ESP_BLE_GAP_PHY_CODED;
-    // ext_adv_params_coded.secondary_phy = ESP_BLE_GAP_PHY_CODED;
     // generate random mac address
     uint8_t mac_addr[6];
     generate_random_mac(mac_addr);
-    esp_ble_gap_ext_adv_params_t params = legacy_adv_params;
-    esp_ble_gap_ext_adv_set_params(0, &params);
 
     // set as a bluetooth random static address
     mac_addr[0] |= 0xc0;
@@ -149,7 +190,99 @@ bool BLE_TX::transmit_longrange(ODID_UAS_Data &UAS_data)
     {
         return false;
     }
+    // Print payload in hex
+    Serial.print("Payload before b64 (");
+    Serial.print(length);
+    Serial.println(" bytes):");
 
+    for (int i = 0; i < length; i++)
+    {
+        if (payload[i] < 0x10)
+            Serial.print('0'); // pad single hex digit
+        Serial.print(payload[i], HEX);
+        Serial.print(' '); // space between bytes
+    }
+    Serial.println();
+
+    // ===== Base64 Encode =====
+    size_t b64_len = 0;
+
+    // First call: get required output length
+    mbedtls_base64_encode(NULL, 0, &b64_len, payload, length);
+
+    // Allocate output buffer (just bytes, not null-terminated)
+    uint8_t base64_out[256]; // make sure it's big enough
+    if (b64_len > sizeof(base64_out))
+    {
+        // handle error: output buffer too small
+        return false;
+    }
+
+    // Second call: actually encode
+    if (mbedtls_base64_encode(base64_out, sizeof(base64_out), &b64_len, payload, length) != 0)
+    {
+        // handle encoding error
+        return false;
+    }
+
+    // Null-terminate for printing as string
+    base64_out[b64_len] = '\0';
+    Serial.print("palyload after encode: ");
+    Serial.println((char *)base64_out);
+
+    // 4) AES-256 CTR encrypt the Base64 data (without the null terminator)
+    uint8_t b64_cipher[400];
+    memcpy(b64_cipher, base64_out, b64_len); // copy Base64 string into cipher buffer
+    aes256_ctr_crypt(b64_cipher, b64_len, AES256_KEY, AES256_IV);
+    print_hex("AES-CTR Cipher (of Base64)", b64_cipher, b64_len);
+
+    // 5) AES-256 CTR decrypt back to Base64
+    uint8_t b64_decrypted[400];
+    memcpy(b64_decrypted, b64_cipher, b64_len);
+    aes256_ctr_crypt(b64_decrypted, b64_len, AES256_KEY, AES256_IV);
+
+    // Null-terminate decrypted Base64 for printing
+    b64_decrypted[b64_len] = '\0';
+    Serial.print("Base64 AFTER AES decrypt: ");
+    Serial.println((char *)b64_decrypted);
+
+    // 6) Base64 decode back to binary payload
+    uint8_t decoded[250];
+    size_t decoded_len = 0;
+    if (mbedtls_base64_decode(decoded, sizeof(decoded), &decoded_len, b64_decrypted, b64_len) != 0)
+    {
+        Serial.println("Base64 decoding failed!");
+        return false;
+    }
+
+    // 7) Print decoded payload
+    print_hex("Payload AFTER full roundtrip", decoded, decoded_len);
+
+    // 8) Compare before and after
+    bool match = (decoded_len == (size_t)length) && (memcmp(decoded, payload, length) == 0);
+    Serial.print("Compare original vs roundtrip: ");
+    Serial.println(match ? "MATCH ✅" : "MISMATCH ❌");
+    // ===== 3) Base64 decode =====
+    // uint8_t decoded[250];
+    // size_t decoded_len = 0;
+    // if (mbedtls_base64_decode(decoded, sizeof(decoded), &decoded_len, base64_out, b64_len) != 0)
+    // {
+    //     Serial.println("Base64 decoding failed!");
+    //     return false;
+    // }
+
+    // // ===== 4) Print decoded payload in hex =====
+    // Serial.print("Payload AFTER decode (");
+    // Serial.print(decoded_len);
+    // Serial.println(" bytes):");
+    // for (size_t i = 0; i < decoded_len; i++)
+    // {
+    //     if (decoded[i] < 0x10)
+    //         Serial.print('0');
+    //     Serial.print(decoded[i], HEX);
+    //     Serial.print(' ');
+    // }
+    // Serial.println();
     // setup ASTM header
     const uint8_t header[]{uint8_t(length + 5), 0x16, 0xfa, 0xff, 0x0d, uint8_t(msg_counters[ODID_MSG_COUNTER_PACKED]++)};
 
@@ -345,6 +478,7 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
     {
         advert.start();
     }
+    started = true;
 
     return true;
 }
