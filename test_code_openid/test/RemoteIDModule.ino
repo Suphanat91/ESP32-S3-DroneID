@@ -116,7 +116,7 @@ void setup()
   UAS_data.Location.VertAccuracy = ODID_VER_ACC_3_METER;
   UAS_data.Location.SpeedAccuracy = ODID_SPEED_ACC_1_METERS_PER_SECOND;
   UAS_data.Location.TSAccuracy = ODID_TIME_ACC_0_5_SECOND;
-  UAS_data.Location.TimeStamp = id_seconds_in_current_hour();
+  UAS_data.Location.TimeStamp = odid_seconds_in_current_hour();
 
   // ---------------------------
   // Self ID
