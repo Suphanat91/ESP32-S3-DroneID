@@ -28,7 +28,6 @@
 #include <mbedtls/base64.h>
 #include <mbedtls/sha256.h>
 
-
 #if AP_DRONECAN_ENABLED
 static DroneCAN dronecan;
 #endif
@@ -51,10 +50,33 @@ static WebInterface webif;
 
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
+// คืนค่า "วินาทีตั้งแต่ต้นชั่วโมง" (0..3599.xxx) สำหรับ ODID Location.TimeStamp
+static inline float odid_seconds_in_current_hour() {
+  time_t now = time(NULL);
+  if (now > 0) {
+    struct tm *utc = gmtime(&now); // ODID ใช้เวลามาตรฐาน
+    return (float)(utc->tm_min * 60 + utc->tm_sec);
+  }
+  // ถ้ายังไม่มีเวลา (ยังไม่ sync NTP) ให้ใช้ millis() วนภายใน 1 ชั่วโมง
+  return ((millis() / 1000.0f));
+}
 
+// คืนค่า Unix time ถ้ามี; ถ้าไม่มีให้สร้าง timebase จาก millis()
+static inline uint32_t safe_unix_time() {
+  time_t now = time(NULL);
+  if (now > 100000) { // ถ้าได้เวลาจริงแล้ว (หลังปี 1970 พอสมควร)
+    return (uint32_t)now;
+  }
+  // timebase จำลอง: เริ่มที่ 0 แล้ววิ่งด้วย millis()/1000
+  return (uint32_t)(millis() / 1000);
+}
 
-
-
+// ทำให้ค่ามุมอยู่ในช่วง 0..360
+static inline float wrap360(float deg) {
+  while (deg >= 360.0f) deg -= 360.0f;
+  while (deg < 0.0f) deg += 360.0f;
+  return deg;
+}
 void setup()
 {
   Serial.begin(115200);
@@ -70,7 +92,15 @@ void setup()
   snprintf(UAS_data.BasicID[0].UASID, sizeof(UAS_data.BasicID[0].UASID), "DUMMY1234567890");
 
   // ---------------------------
+  // Basic ID #2 (ทำให้ phase วนถึง 6)
+  UAS_data.BasicIDValid[1] = 1; // สำคัญ!
+  UAS_data.BasicID[1].UAType = ODID_UATYPE_HELICOPTER_OR_MULTIROTOR;
+  UAS_data.BasicID[1].IDType = ODID_IDTYPE_SERIAL_NUMBER; // หรือชนิดที่คุณต้องการ
+  snprintf(UAS_data.BasicID[1].UASID, sizeof(UAS_data.BasicID[1].UASID), "DUMMY2_ABCDEFG");
+
+  // ---------------------------
   // Location
+  UAS_data.Location.BaroAccuracy = ODID_VER_ACC_3_METER; // เพิ่มให้ครบตามต้นฉบับ
   UAS_data.LocationValid = 1;
   UAS_data.Location.Status = ODID_STATUS_AIRBORNE;
   UAS_data.Location.Direction = 90.0f;
@@ -86,7 +116,7 @@ void setup()
   UAS_data.Location.VertAccuracy = ODID_VER_ACC_3_METER;
   UAS_data.Location.SpeedAccuracy = ODID_SPEED_ACC_1_METERS_PER_SECOND;
   UAS_data.Location.TSAccuracy = ODID_TIME_ACC_0_5_SECOND;
-  UAS_data.Location.TimeStamp = 1234.0f;
+  UAS_data.Location.TimeStamp = id_seconds_in_current_hour();
 
   // ---------------------------
   // Self ID
@@ -108,7 +138,7 @@ void setup()
   UAS_data.System.CategoryEU = ODID_CATEGORY_EU_OPEN;
   UAS_data.System.ClassEU = ODID_CLASS_EU_CLASS_1;
   UAS_data.System.OperatorAltitudeGeo = 48.0f;
-  UAS_data.System.Timestamp = 12345678;
+  UAS_data.System.Timestamp = safe_unix_time();
 
   // ---------------------------
   // Operator ID
@@ -125,13 +155,70 @@ void setup()
   printOperatorID_data(&UAS_data.OperatorID);
 #endif
 }
-
 void loop()
 {
-  // ble.transmit_legacy(UAS_data);
-  ble.transmit_longrange(UAS_data);
-  wifi.transmit_nan(UAS_data);
-  wifi.transmit_beacon(UAS_data);
+  // อัปเดตค่าทุก ~1 วินาที ให้เฟรมดู "สด" เสมอ
+  static uint32_t last_ms = 0;
+  uint32_t now_ms = millis();
+  if (now_ms - last_ms >= 1000) {
+    last_ms = now_ms;
 
-  delay(1000);
+    // 1) เวลา: สำคัญที่สุดสำหรับการรีแพ็กเก็ต
+    UAS_data.Location.TimeStamp = odid_seconds_in_current_hour();
+    UAS_data.System.Timestamp   = safe_unix_time();
+
+    // 2) อัปเดตค่า dynamic เล็กน้อย (ตัวอย่าง)
+    // หมุนหัว 1°/s
+    UAS_data.Location.Direction = wrap360(UAS_data.Location.Direction + 1.0f);
+
+    // แกว่งความสูง +/-0.5 m แบบช้า ๆ
+    static bool up = true;
+    if (up) {
+      UAS_data.Location.AltitudeGeo += 0.05f;
+      UAS_data.Location.Height      += 0.05f;
+      if (UAS_data.Location.AltitudeGeo > 48.5f) up = false;
+    } else {
+      UAS_data.Location.AltitudeGeo -= 0.05f;
+      UAS_data.Location.Height      -= 0.05f;
+      if (UAS_data.Location.AltitudeGeo < 47.5f) up = true;
+    }
+
+    // (ถ้าต้องการ) ขยับพิกัดเล็กน้อยให้ดูเหมือนเคลื่อนที่ตรงไปทางตะวันออก
+    // 5.5 m/s ≈ 0.0000495 deg lon/s ที่ละติจูด ~13°
+    const float meters_per_deg_lon = 111320.0f * cosf(radians(13.0890f));
+    const float dlon = (UAS_data.Location.SpeedHorizontal / meters_per_deg_lon);
+    UAS_data.Location.Longitude += dlon;
+  }
+
+  static uint32_t last_update_wifi_nan_ms;
+    if (g.wifi_nan_rate > 0 &&
+        now_ms - last_update_wifi_nan_ms > 1000/g.wifi_nan_rate) {
+        last_update_wifi_nan_ms = now_ms;
+        wifi.transmit_nan(UAS_data);
+    }
+
+    static uint32_t last_update_wifi_beacon_ms;
+    if (g.wifi_beacon_rate > 0 &&
+        now_ms - last_update_wifi_beacon_ms > 1000/g.wifi_beacon_rate) {
+        last_update_wifi_beacon_ms = now_ms;
+        wifi.transmit_beacon(UAS_data);
+    }
+
+    static uint32_t last_update_bt5_ms;
+    if (g.bt5_rate > 0 &&
+        now_ms - last_update_bt5_ms > 1000/g.bt5_rate) {
+        last_update_bt5_ms = now_ms;
+        ble.transmit_longrange(UAS_data);
+    }
+
+    static uint32_t last_update_bt4_ms;
+    int bt4_states = UAS_data.BasicIDValid[1] ? 7 : 6;
+    if (g.bt4_rate > 0 &&
+        now_ms - last_update_bt4_ms > (1000.0f/bt4_states)/g.bt4_rate) {
+        last_update_bt4_ms = now_ms;
+        ble.transmit_legacy(UAS_data);
+    }
+
+    // sleep for a bit for power saving
+    delay(1);
 }
