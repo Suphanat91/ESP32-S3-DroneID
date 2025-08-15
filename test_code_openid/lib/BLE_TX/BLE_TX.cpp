@@ -307,8 +307,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
     static uint8_t legacy_phase = 0;
     int legacy_length = 0;
     // setup ASTM header
-    // DEBUG: ดู phase ก่อนเข้า switch
-    Serial.printf("[legacy] before switch: legacy_phase=%u\n", legacy_phase); // DEBUG
     const uint8_t header[] { 0x1e, 0x16, 0xfa, 0xff, 0x0d }; //exclude the message counter
     // combine header with payload
     memset(legacy_payload, 0, sizeof(legacy_payload));
@@ -319,7 +317,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
     {
     case  0: {
         if (UAS_data.LocationValid) {
-             Serial.println("[legacy] case 0: Location"); // DEBUG
             ODID_Location_encoded location_encoded;
             memset(&location_encoded, 0, sizeof(location_encoded));
             if (encodeLocationMessage(&location_encoded, &UAS_data.Location) != ODID_SUCCESS) {
@@ -338,7 +335,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
 
     case  1: {
         if (UAS_data.BasicIDValid[0]) {
-             Serial.println("[legacy] case 0: Location"); // DEBUG
             ODID_BasicID_encoded basicid_encoded;
             memset(&basicid_encoded, 0, sizeof(basicid_encoded));
             if (encodeBasicIDMessage(&basicid_encoded, &UAS_data.BasicID[0]) != ODID_SUCCESS) {
@@ -357,7 +353,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
 
     case  2: {
         if (UAS_data.SelfIDValid) {
-            Serial.println("[legacy] case 2: SelfID"); // DEBUG
             ODID_SelfID_encoded selfid_encoded;
             memset(&selfid_encoded, 0, sizeof(selfid_encoded));
             if (encodeSelfIDMessage(&selfid_encoded, &UAS_data.SelfID) != ODID_SUCCESS) {
@@ -376,7 +371,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
 
     case  3: {
         if (UAS_data.SystemValid) {
-            Serial.println("[legacy] case 3: System"); // DEBUG
             ODID_System_encoded system_encoded;
             memset(&system_encoded, 0, sizeof(system_encoded));
             if (encodeSystemMessage(&system_encoded, &UAS_data.System) != ODID_SUCCESS) {
@@ -395,7 +389,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
 
     case  4: {
         if (UAS_data.OperatorIDValid) {
-            Serial.println("[legacy] case 4: OperatorID"); // DEBUG
             ODID_OperatorID_encoded operatorid_encoded;
             memset(&operatorid_encoded, 0, sizeof(operatorid_encoded));
             if (encodeOperatorIDMessage(&operatorid_encoded, &UAS_data.OperatorID) != ODID_SUCCESS) {
@@ -414,7 +407,6 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
 
     case  5: //in case of dual basic ID
         if (UAS_data.BasicIDValid[1]) {
-            Serial.println("[legacy] case 5: BasicID[1]"); // DEBUG
             ODID_BasicID_encoded basicid2_encoded;
             memset(&basicid2_encoded, 0, sizeof(basicid2_encoded));
             if (encodeBasicIDMessage(&basicid2_encoded, &UAS_data.BasicID[1]) != ODID_SUCCESS) {
@@ -430,7 +422,7 @@ bool BLE_TX::transmit_legacy(ODID_UAS_Data &UAS_data)
         }
         break;
 
-     case  6: {
+    case  6: {
         //set BLE name
         char legacy_name[28] {};
         const char *UAS_ID = (const char *)UAS_data.BasicID[0].UASID;

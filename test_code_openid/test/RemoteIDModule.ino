@@ -50,6 +50,9 @@ static WebInterface webif;
 
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
+
+
+
 // คืนค่า "วินาทีตั้งแต่ต้นชั่วโมง" (0..3599.xxx) สำหรับ ODID Location.TimeStamp
 static inline float odid_seconds_in_current_hour() {
   time_t now = time(NULL);
@@ -77,6 +80,8 @@ static inline float wrap360(float deg) {
   while (deg < 0.0f) deg += 360.0f;
   return deg;
 }
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -190,35 +195,45 @@ void loop()
     UAS_data.Location.Longitude += dlon;
   }
 
-  static uint32_t last_update_wifi_nan_ms;
-    if (g.wifi_nan_rate > 0 &&
-        now_ms - last_update_wifi_nan_ms > 1000/g.wifi_nan_rate) {
-        last_update_wifi_nan_ms = now_ms;
-        wifi.transmit_nan(UAS_data);
-    }
+  // static uint32_t last_update_wifi_nan_ms;
+  //   if (g.wifi_nan_rate > 0 &&
+  //       now_ms - last_update_wifi_nan_ms > 1000/g.wifi_nan_rate) {
+  //       last_update_wifi_nan_ms = now_ms;
+  //       wifi.transmit_nan(UAS_data);
+  //   }
 
-    static uint32_t last_update_wifi_beacon_ms;
-    if (g.wifi_beacon_rate > 0 &&
-        now_ms - last_update_wifi_beacon_ms > 1000/g.wifi_beacon_rate) {
-        last_update_wifi_beacon_ms = now_ms;
-        wifi.transmit_beacon(UAS_data);
-    }
+  //   static uint32_t last_update_wifi_beacon_ms;
+  //   if (g.wifi_beacon_rate > 0 &&
+  //       now_ms - last_update_wifi_beacon_ms > 1000/g.wifi_beacon_rate) {
+  //       last_update_wifi_beacon_ms = now_ms;
+  //       wifi.transmit_beacon(UAS_data);
+  //   }
 
-    static uint32_t last_update_bt5_ms;
-    if (g.bt5_rate > 0 &&
-        now_ms - last_update_bt5_ms > 1000/g.bt5_rate) {
-        last_update_bt5_ms = now_ms;
-        ble.transmit_longrange(UAS_data);
-    }
+  //   static uint32_t last_update_bt5_ms;
+  //   if (g.bt5_rate > 0 &&
+  //       now_ms - last_update_bt5_ms > 1000/g.bt5_rate) {
+  //       last_update_bt5_ms = now_ms;
+  //       ble.transmit_longrange(UAS_data);
+  //   }
 
-    static uint32_t last_update_bt4_ms;
-    int bt4_states = UAS_data.BasicIDValid[1] ? 7 : 6;
-    if (g.bt4_rate > 0 &&
-        now_ms - last_update_bt4_ms > (1000.0f/bt4_states)/g.bt4_rate) {
-        last_update_bt4_ms = now_ms;
-        ble.transmit_legacy(UAS_data);
-    }
+  //   static uint32_t last_update_bt4_ms;
+  //   int bt4_states = UAS_data.BasicIDValid[1] ? 7 : 6;
+  //   if (g.bt4_rate > 0 &&
+  //       now_ms - last_update_bt4_ms > (1000.0f/bt4_states)/g.bt4_rate) {
+  //       last_update_bt4_ms = now_ms;
+  //       ble.transmit_legacy(UAS_data);
+    // }
+  // ส่ง WiFi NAN ทุกครั้ง
+  // wifi.transmit_nan(UAS_data);
 
+  // // ส่ง WiFi Beacon ทุกครั้ง
+  // wifi.transmit_beacon(UAS_data);
+
+  // ส่ง Bluetooth 5 (Long Range) ทุกครั้ง
+  ble.transmit_longrange(UAS_data);
+
+  // ส่ง Bluetooth 4 (Legacy) ทุกครั้ง
+  ble.transmit_legacy(UAS_data);
     // sleep for a bit for power saving
     delay(1);
 }
