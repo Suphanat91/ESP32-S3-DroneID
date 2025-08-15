@@ -21,11 +21,15 @@
 #include "mbedtls/aes.h"
 // ===== AES-256 CTR helpers/config =====
 
-// Example AES-256 key (32 bytes). In real usage, replace with your own secret key.
-static const uint8_t AES256_KEY[32] = {
-  0x60,0x3d,0xeb,0x10,0x15,0xca,0x71,0xbe,0x2b,0x73,0xae,0xf0,0x85,0x7d,0x77,0x81,
-  0x1f,0x35,0x2c,0x07,0x3b,0x61,0x08,0xd7,0x2d,0x98,0x10,0xa3,0x09,0x14,0xdf,0xf4
-};
+// สร้างคีย์ AES จากรหัสผ่านที่ผู้ใช้กรอก
+static void derive_aes_key_from_password(const char* password, uint8_t key_out[32]) {
+    mbedtls_sha256_context sha_ctx;
+    mbedtls_sha256_init(&sha_ctx);
+    mbedtls_sha256_starts_ret(&sha_ctx, 0); // 0 = SHA-256, 1 = SHA-224
+    mbedtls_sha256_update_ret(&sha_ctx, (const unsigned char*)password, strlen(password));
+    mbedtls_sha256_finish_ret(&sha_ctx, key_out);
+    mbedtls_sha256_free(&sha_ctx);
+}
 
 // Example IV / nonce (16 bytes). In real usage, generate a fresh one per message.
 static const uint8_t AES256_IV[16] = {
@@ -183,121 +187,74 @@ bool BLE_TX::init(void)
 bool BLE_TX::transmit_longrange(ODID_UAS_Data &UAS_data)
 {
     init();
-    // create a packed UAS data message
     uint8_t payload[250];
     int length = odid_message_build_pack(&UAS_data, payload, 255);
-    if (length <= 0)
-    {
-        return false;
-    }
-    // Print payload in hex
-    Serial.print("Payload before b64 (");
-    Serial.print(length);
-    Serial.println(" bytes):");
+    if (length <= 0) return false;
 
-    for (int i = 0; i < length; i++)
-    {
-        if (payload[i] < 0x10)
-            Serial.print('0'); // pad single hex digit
-        Serial.print(payload[i], HEX);
-        Serial.print(' '); // space between bytes
-    }
-    Serial.println();
+    // ===== 1) ผู้ใช้กรอกรหัสผ่าน =====
+    char user_password[64] = "helloworld"; 
+    uint8_t AES256_KEY[32];
+    derive_aes_key_from_password(user_password, AES256_KEY);
+
+    // ===== 2) IV =====
+    uint8_t AES256_IV[16] = { 
+        0x00,0x01,0x02,0x03,
+        0x04,0x05,0x06,0x07,
+        0x08,0x09,0x0a,0x0b,
+        0x0c,0x0d,0x0e,0x0f
+    };
+
+    // Print payload
+    print_hex("Payload before b64", payload, length);
 
     // ===== Base64 Encode =====
     size_t b64_len = 0;
-
-    // First call: get required output length
     mbedtls_base64_encode(NULL, 0, &b64_len, payload, length);
 
-    // Allocate output buffer (just bytes, not null-terminated)
-    uint8_t base64_out[256]; // make sure it's big enough
-    if (b64_len > sizeof(base64_out))
-    {
-        // handle error: output buffer too small
-        return false;
-    }
+    uint8_t base64_out[256];
+    if (b64_len > sizeof(base64_out)) return false;
 
-    // Second call: actually encode
-    if (mbedtls_base64_encode(base64_out, sizeof(base64_out), &b64_len, payload, length) != 0)
-    {
-        // handle encoding error
-        return false;
-    }
-
-    // Null-terminate for printing as string
+    if (mbedtls_base64_encode(base64_out, sizeof(base64_out), &b64_len, payload, length) != 0) return false;
     base64_out[b64_len] = '\0';
-    Serial.print("palyload after encode: ");
-    Serial.println((char *)base64_out);
+    Serial.print("payload after encode: ");
+    Serial.println((char*)base64_out);
 
-    // 4) AES-256 CTR encrypt the Base64 data (without the null terminator)
+    // ===== AES Encrypt =====
     uint8_t b64_cipher[400];
-    memcpy(b64_cipher, base64_out, b64_len); // copy Base64 string into cipher buffer
+    memcpy(b64_cipher, base64_out, b64_len);
     aes256_ctr_crypt(b64_cipher, b64_len, AES256_KEY, AES256_IV);
     print_hex("AES-CTR Cipher (of Base64)", b64_cipher, b64_len);
 
-    // 5) AES-256 CTR decrypt back to Base64
+    // ===== AES Decrypt =====
     uint8_t b64_decrypted[400];
     memcpy(b64_decrypted, b64_cipher, b64_len);
     aes256_ctr_crypt(b64_decrypted, b64_len, AES256_KEY, AES256_IV);
-
-    // Null-terminate decrypted Base64 for printing
     b64_decrypted[b64_len] = '\0';
     Serial.print("Base64 AFTER AES decrypt: ");
-    Serial.println((char *)b64_decrypted);
+    Serial.println((char*)b64_decrypted);
 
-    // 6) Base64 decode back to binary payload
+    // ===== Base64 Decode =====
     uint8_t decoded[250];
     size_t decoded_len = 0;
-    if (mbedtls_base64_decode(decoded, sizeof(decoded), &decoded_len, b64_decrypted, b64_len) != 0)
-    {
+    if (mbedtls_base64_decode(decoded, sizeof(decoded), &decoded_len, b64_decrypted, b64_len) != 0) {
         Serial.println("Base64 decoding failed!");
         return false;
     }
 
-    // 7) Print decoded payload
+    // ===== Compare =====
     print_hex("Payload AFTER full roundtrip", decoded, decoded_len);
-
-    // 8) Compare before and after
     bool match = (decoded_len == (size_t)length) && (memcmp(decoded, payload, length) == 0);
     Serial.print("Compare original vs roundtrip: ");
     Serial.println(match ? "MATCH ✅" : "MISMATCH ❌");
-    // ===== 3) Base64 decode =====
-    // uint8_t decoded[250];
-    // size_t decoded_len = 0;
-    // if (mbedtls_base64_decode(decoded, sizeof(decoded), &decoded_len, base64_out, b64_len) != 0)
-    // {
-    //     Serial.println("Base64 decoding failed!");
-    //     return false;
-    // }
 
-    // // ===== 4) Print decoded payload in hex =====
-    // Serial.print("Payload AFTER decode (");
-    // Serial.print(decoded_len);
-    // Serial.println(" bytes):");
-    // for (size_t i = 0; i < decoded_len; i++)
-    // {
-    //     if (decoded[i] < 0x10)
-    //         Serial.print('0');
-    //     Serial.print(decoded[i], HEX);
-    //     Serial.print(' ');
-    // }
-    // Serial.println();
-    // setup ASTM header
+    // ===== ส่ง BLE =====
     const uint8_t header[]{uint8_t(length + 5), 0x16, 0xfa, 0xff, 0x0d, uint8_t(msg_counters[ODID_MSG_COUNTER_PACKED]++)};
-
-    // combine header with payload
     memcpy(longrange_payload, header, sizeof(header));
     memcpy(&longrange_payload[sizeof(header)], payload, length);
     int longrange_length = sizeof(header) + length;
 
     advert.setAdvertisingData(1, longrange_length, longrange_payload);
-
-    // we start advertising when we have the first lot of data to send
-    if (!started)
-    {
-        advert.start();
-    }
+    if (!started) advert.start();
     started = true;
 
     return true;

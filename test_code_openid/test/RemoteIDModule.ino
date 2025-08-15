@@ -28,6 +28,7 @@
 #include <mbedtls/base64.h>
 #include <mbedtls/sha256.h>
 
+
 #if AP_DRONECAN_ENABLED
 static DroneCAN dronecan;
 #endif
@@ -50,6 +51,9 @@ static WebInterface webif;
 
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
+
+
+
 
 void setup()
 {
